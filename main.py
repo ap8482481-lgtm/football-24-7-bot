@@ -48,7 +48,7 @@ def rewrite_news_with_ai(news_text: str) -> str:
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": f"Сделай пост из этой новости:\n{news_text}"}
                     ],
-                    "model": "GigaChat-Plus"
+                    "model": "GigaChat"
                 }
             )
             return response.choices[0].message.content
