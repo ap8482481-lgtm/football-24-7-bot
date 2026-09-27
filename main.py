@@ -9,7 +9,6 @@ BOT_TOKEN = "8691613866:AAF9OyxSbbECPSouLLJYeDKADYFqjQszN60"
 CHANNEL_ID = "@football24_7_news"
 GIGACHAT_AUTH_DATA = "MDFhMDhjODctNzJlOS03ZTM1LTkyZDUtMzQ2NWEzNzg4MzAxOmY3YmQyODM4LWJlOTItNGYzOC1hOGZjLTM1YTU2ZjE2YTgzMg=="
 
-# Список источников новостей
 RSS_URLS = [
     "https://www.championat.com/xml/rss_football.xml",
     "https://www.sports.ru/stat/export/rss/football.xml",
@@ -21,10 +20,8 @@ RSS_URLS = [
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Хранилище опубликованных ссылок, чтобы не было дублей
 posted_news = set()
 
-# Настройка системного промпта для нейросети
 SYSTEM_PROMPT = """
 Ты — главный редактор Telegram-канала "ФУТБОЛ 24/7". 
 Твоя задача — сделать короткую выжимку из новости. 
@@ -40,32 +37,29 @@ SYSTEM_PROMPT = """
 """
 
 def rewrite_news_with_ai(news_text: str) -> str:
-    """Отправка новости в GigaChat для рерайта с автоопределением модели"""
+    """Отправка новости в GigaChat-3-Ultra"""
     try:
-        with GigaChat(credentials=GIGACHAT_AUTH_DATA, verify_ssl_certs=False) as giga:
-            # 1. Спрашиваем у API, какие модели доступны для вашего ключа
-            models = giga.get_models()
-            # 2. Берем самую первую доступную модель
-            available_model = models.data[0].id 
-            print(f"Успешно подключились к модели: {available_model}")
-            
-            # 3. Отправляем запрос именно в неё
-            response = giga.chat(
-                payload={
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": f"Сделай пост из этой новости:\n{news_text}"}
-                    ],
-                    "model": available_model
-                }
-            )
-            return response.choices[0].message.content
+        client = GigaChat(
+            credentials=GIGACHAT_AUTH_DATA,
+            scope="GIGACHAT_API_PERS",
+            verify_ssl_certs=False,
+        )
+        
+        chat = Chat(
+            model="GigaChat-3-Ultra",
+            messages=[
+                Messages(role=MessagesRole.SYSTEM, content=SYSTEM_PROMPT),
+                Messages(role=MessagesRole.USER, content=f"Сделай пост из этой новости:\n{news_text}")
+            ],
+        )
+        
+        resp = client.chat(chat)
+        return resp.choices[0].message.content
     except Exception as e:
         print(f"Ошибка GigaChat: {e}")
         return None
 
 def extract_image_from_entry(entry):
-    """Извлекает ссылку на картинку из RSS-ленты"""
     if 'enclosures' in entry and len(entry.enclosures) > 0:
         for enc in entry.enclosures:
             if 'image' in enc.type or enc.href.endswith(('.jpg', '.jpeg', '.png')):
@@ -75,7 +69,6 @@ def extract_image_from_entry(entry):
     return None
 
 def get_latest_news_from_all_sources():
-    """Собирает последнюю новость из всех RSS-лент и выбирает самую свежую"""
     all_entries = []
     for url in RSS_URLS:
         try:
@@ -92,7 +85,6 @@ def get_latest_news_from_all_sources():
     return all_entries[0] 
 
 async def fetch_and_publish():
-    """Сбор новостей и публикация в канал"""
     print("Проверка новых новостей по всем источникам...")
     
     latest_entry = get_latest_news_from_all_sources()
@@ -124,6 +116,9 @@ async def fetch_and_publish():
                     print(f"Ошибка публикации в Telegram: {e}")
 
 async def main():
+    # Удаляем вебхук, чтобы исправить ошибку TelegramConflictError
+    await bot.delete_webhook(drop_pending_updates=True)
+    
     scheduler = AsyncIOScheduler()
     scheduler.add_job(fetch_and_publish, "interval", minutes=20) 
     scheduler.start()
