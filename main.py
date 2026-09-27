@@ -62,13 +62,58 @@ def rewrite_news_with_ai(news_text: str) -> str:
         return None
 
 def extract_image_from_entry(entry):
-    """Максимально всеядный поиск картинки в RSS-ленте"""
-    # 1. Проверяем стандартное поле media_content
+    """Всеядный поиск картинки с отладкой в логах"""
+    img_url = None
+
+    # 1. Проверяем media_content
     if hasattr(entry, 'media_content') and entry.media_content:
         for media in entry.media_content:
             url = media.get('url')
-            if url and any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                return url
+            if url:
+                img_url = url
+                break
+                
+    # 2. Проверяем media_thumbnail
+    if not img_url and hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
+        for thumb in entry.media_thumbnail:
+            url = thumb.get('url')
+            if url:
+                img_url = url
+                break
+                
+    # 3. Проверяем enclosures (вложения)
+    if not img_url and hasattr(entry, 'enclosures') and entry.enclosures:
+        for enc in entry.enclosures:
+            url = enc.get('href')
+            if url:
+                img_url = url
+                break
+
+    # 4. Проверяем links
+    if not img_url and hasattr(entry, 'links'):
+        for link in entry.links:
+            if link.get('type', '').startswith('image/') or any(ext in link.get('href', '').lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                img_url = link.get('href')
+                break
+
+    # 5. Ищем тег <img> внутри HTML-описания
+    if not img_url:
+        content_html = ""
+        if hasattr(entry, 'summary'):
+            content_html += entry.summary
+        if hasattr(entry, 'content') and entry.content:
+            for c in entry.content:
+                content_html += c.get('value', '')
+            
+        if content_html:
+            matches = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', content_html)
+            for found_url in matches:
+                if found_url.startswith('http') and not any(pixel in found_url.lower() for pixel in ['counter', 'pixel', 'stat', 'banner', '1x1']):
+                    img_url = found_url
+                    break
+
+    print(f"ОТЛАДКА КАРТИНКИ для '{entry.title}': найдена ссылка -> {img_url}")
+    return img_url
                 
     # 2. Проверяем media_thumbnail
     if hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
