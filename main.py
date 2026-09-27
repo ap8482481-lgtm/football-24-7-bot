@@ -7,9 +7,9 @@ from gigachat import GigaChat
 from gigachat.models import Chat, Messages, MessagesRole
 
 # ================= НАСТРОЙКИ =================
-BOT_TOKEN = "ВАШ_ТОКЕН_ОТ_BOTFATHER"
-CHANNEL_ID = "@ВАШ_ЮЗЕРНЕЙМ_КАНАЛА"  # Например: @football24_7_news
-GIGACHAT_AUTH_DATA = "ВАШ_КЛЮЧ_АВТОРИЗАЦИИ_GIGACHAT"
+BOT_TOKEN = "8691613866:AAF9OyxSbbECPSouLLJYeDKADYFqjQszN60"
+CHANNEL_ID = "@football24_7_news"  
+GIGACHAT_AUTH_DATA = "MDFhMDhjODctNzJlOS03ZTM1LTkyZDUtMzQ2NWEzNzg4MzAxOmY3YmQyODM4LWJlOTItNGYzOC1hOGZjLTM1YTU2ZjE2YTgzMg=="
 
 RSS_URLS = [
     "https://www.championat.com/xml/rss_football.xml",
