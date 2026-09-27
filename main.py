@@ -128,3 +128,17 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+async def main():
+    await bot.delete_webhook(drop_pending_updates=True)
+    
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(fetch_and_publish, "interval", minutes=20) 
+    scheduler.start()
+    
+    print("Бот запущен. Ожидание расписания...")
+    
+    # Запускаем проверку прямо сейчас, не дожидаясь таймера:
+    await fetch_and_publish() 
+    
+    await dp.start_polling(bot)
