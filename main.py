@@ -62,20 +62,49 @@ def rewrite_news_with_ai(news_text: str) -> str:
         return None
 
 def extract_image_from_entry(entry):
-    """Продвинутое извлечение картинки (включая поиск в тегах <img> внутри HTML)"""
+    """Максимально всеядный поиск картинки в RSS-ленте"""
+    # 1. Проверяем стандартное поле media_content
     if hasattr(entry, 'media_content') and entry.media_content:
         for media in entry.media_content:
-            if 'url' in media:
-                return media['url']
+            url = media.get('url')
+            if url and any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                return url
                 
+    # 2. Проверяем media_thumbnail
     if hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
-        if 'url' in entry.media_thumbnail[0]:
-            return entry.media_thumbnail[0]['url']
+        for thumb in entry.media_thumbnail:
+            url = thumb.get('url')
+            if url:
+                return url
                 
+    # 3. Проверяем enclosures (вложения)
     if hasattr(entry, 'enclosures') and entry.enclosures:
         for enc in entry.enclosures:
-            if 'href' in enc and any(ext in enc['href'].lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                return enc['href']
+            url = enc.get('href')
+            if url and any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                return url
+
+    # 4. Проверяем поле 'links' на наличие картинок
+    if hasattr(entry, 'links'):
+        for link in entry.links:
+            if link.get('type', '').startswith('image/') or any(ext in link.get('href', '').lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                return link.get('href')
+
+    # 5. Ищем тег <img> внутри HTML-описания новости (summary / content)
+    content_html = ""
+    if hasattr(entry, 'summary'):
+        content_html += entry.summary
+    if hasattr(entry, 'content') and entry.content:
+        for c in entry.content:
+            content_html += c.get('value', '')
+        
+    if content_html:
+        matches = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', content_html)
+        for img_url in matches:
+            if img_url.startswith('http') and not any(pixel in img_url.lower() for pixel in ['counter', 'pixel', 'stat', 'banner']):
+                return img_url
+                
+    return None
                 
     # Ищем картинку внутри HTML-описания новости
     content_html = ""
