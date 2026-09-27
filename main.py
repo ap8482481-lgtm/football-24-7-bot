@@ -1,4 +1,5 @@
 import asyncio
+import re
 import feedparser
 from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -6,9 +7,9 @@ from gigachat import GigaChat
 from gigachat.models import Chat, Messages, MessagesRole
 
 # ================= НАСТРОЙКИ =================
-BOT_TOKEN = "8691613866:AAF9OyxSbbECPSouLLJYeDKADYFqjQszN60"
-CHANNEL_ID = "@football24_7_news" 
-GIGACHAT_AUTH_DATA = "MDFhMDhjODctNzJlOS03ZTM1LTkyZDUtMzQ2NWEzNzg4MzAxOmY3YmQyODM4LWJlOTItNGYzOC1hOGZjLTM1YTU2ZjE2YTgzMg=="
+BOT_TOKEN = "ВАШ_ТОКЕН_ОТ_BOTFATHER"
+CHANNEL_ID = "@ВАШ_ЮЗЕРНЕЙМ_КАНАЛА"  # Например: @football24_7_news
+GIGACHAT_AUTH_DATA = "ВАШ_КЛЮЧ_АВТОРИЗАЦИИ_GIGACHAT"
 
 RSS_URLS = [
     "https://www.championat.com/xml/rss_football.xml",
@@ -61,13 +62,35 @@ def rewrite_news_with_ai(news_text: str) -> str:
         return None
 
 def extract_image_from_entry(entry):
-    """Извлекает ссылку на картинку из RSS-ленты"""
-    if 'enclosures' in entry and len(entry.enclosures) > 0:
+    """Продвинутое извлечение картинки (включая поиск в тегах <img> внутри HTML)"""
+    if hasattr(entry, 'media_content') and entry.media_content:
+        for media in entry.media_content:
+            if 'url' in media:
+                return media['url']
+                
+    if hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
+        if 'url' in entry.media_thumbnail[0]:
+            return entry.media_thumbnail[0]['url']
+                
+    if hasattr(entry, 'enclosures') and entry.enclosures:
         for enc in entry.enclosures:
-            if 'image' in enc.type or enc.href.endswith(('.jpg', '.jpeg', '.png')):
-                return enc.href
-    if 'media_content' in entry and len(entry.media_content) > 0:
-        return entry.media_content[0]['url']
+            if 'href' in enc and any(ext in enc['href'].lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                return enc['href']
+                
+    # Ищем картинку внутри HTML-описания новости
+    content_html = ""
+    if hasattr(entry, 'summary'):
+        content_html += entry.summary
+    if hasattr(entry, 'content') and entry.content:
+        content_html += entry.content[0].get('value', '')
+        
+    if content_html:
+        match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content_html)
+        if match:
+            img_url = match.group(1)
+            if img_url.startswith('http'):
+                return img_url
+                
     return None
 
 def get_latest_news_from_all_sources():
