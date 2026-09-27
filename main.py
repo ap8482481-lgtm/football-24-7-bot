@@ -1,5 +1,6 @@
 import asyncio
 import re
+import urllib.request
 import feedparser
 from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -62,109 +63,29 @@ def rewrite_news_with_ai(news_text: str) -> str:
         return None
 
 def extract_image_from_entry(entry):
-    """Всеядный поиск картинки с отладкой в логах"""
-    img_url = None
-
-    # 1. Проверяем media_content
-    if hasattr(entry, 'media_content') and entry.media_content:
-        for media in entry.media_content:
-            url = media.get('url')
-            if url:
-                img_url = url
-                break
-                
-    # 2. Проверяем media_thumbnail
-    if not img_url and hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
-        for thumb in entry.media_thumbnail:
-            url = thumb.get('url')
-            if url:
-                img_url = url
-                break
-                
-    # 3. Проверяем enclosures (вложения)
-    if not img_url and hasattr(entry, 'enclosures') and entry.enclosures:
-        for enc in entry.enclosures:
-            url = enc.get('href')
-            if url:
-                img_url = url
-                break
-
-    # 4. Проверяем links
-    if not img_url and hasattr(entry, 'links'):
-        for link in entry.links:
-            if link.get('type', '').startswith('image/') or any(ext in link.get('href', '').lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                img_url = link.get('href')
-                break
-
-    # 5. Ищем тег <img> внутри HTML-описания
-    if not img_url:
-        content_html = ""
-        if hasattr(entry, 'summary'):
-            content_html += entry.summary
-        if hasattr(entry, 'content') and entry.content:
-            for c in entry.content:
-                content_html += c.get('value', '')
+    """Парсит страницу новости и забирает официальную обложку (og:image)"""
+    if not hasattr(entry, 'link') or not entry.link:
+        return None
+        
+    try:
+        req = urllib.request.Request(
+            entry.link, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        )
+        with urllib.request.urlopen(req, timeout=6) as response:
+            html = response.read().decode('utf-8', errors='ignore')
             
-        if content_html:
-            matches = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', content_html)
-            for found_url in matches:
-                if found_url.startswith('http') and not any(pixel in found_url.lower() for pixel in ['counter', 'pixel', 'stat', 'banner', '1x1']):
-                    img_url = found_url
-                    break
-
-    print(f"ОТЛАДКА КАРТИНКИ для '{entry.title}': найдена ссылка -> {img_url}")
-    return img_url
+            # Ищем тег Open Graph с картинкой (есть у всех новостных сайтов)
+            match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+            if match:
+                return match.group(1)
                 
-    # 2. Проверяем media_thumbnail
-    if hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
-        for thumb in entry.media_thumbnail:
-            url = thumb.get('url')
-            if url:
-                return url
-                
-    # 3. Проверяем enclosures (вложения)
-    if hasattr(entry, 'enclosures') and entry.enclosures:
-        for enc in entry.enclosures:
-            url = enc.get('href')
-            if url and any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                return url
-
-    # 4. Проверяем поле 'links' на наличие картинок
-    if hasattr(entry, 'links'):
-        for link in entry.links:
-            if link.get('type', '').startswith('image/') or any(ext in link.get('href', '').lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                return link.get('href')
-
-    # 5. Ищем тег <img> внутри HTML-описания новости (summary / content)
-    content_html = ""
-    if hasattr(entry, 'summary'):
-        content_html += entry.summary
-    if hasattr(entry, 'content') and entry.content:
-        for c in entry.content:
-            content_html += c.get('value', '')
+            match2 = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', html, re.IGNORECASE)
+            if match2:
+                return match2.group(1)
+    except Exception as e:
+        print(f"Не удалось загрузить картинку по ссылке {entry.link}: {e}")
         
-    if content_html:
-        matches = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', content_html)
-        for img_url in matches:
-            if img_url.startswith('http') and not any(pixel in img_url.lower() for pixel in ['counter', 'pixel', 'stat', 'banner']):
-                return img_url
-                
-    return None
-                
-    # Ищем картинку внутри HTML-описания новости
-    content_html = ""
-    if hasattr(entry, 'summary'):
-        content_html += entry.summary
-    if hasattr(entry, 'content') and entry.content:
-        content_html += entry.content[0].get('value', '')
-        
-    if content_html:
-        match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content_html)
-        if match:
-            img_url = match.group(1)
-            if img_url.startswith('http'):
-                return img_url
-                
     return None
 
 def get_latest_news_from_all_sources():
