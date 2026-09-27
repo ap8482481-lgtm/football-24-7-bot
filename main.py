@@ -3,10 +3,11 @@ import feedparser
 from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from gigachat import GigaChat
+from gigachat.models import Chat, Messages, MessagesRole
 
 # ================= НАСТРОЙКИ =================
 BOT_TOKEN = "8691613866:AAF9OyxSbbECPSouLLJYeDKADYFqjQszN60"
-CHANNEL_ID = "@football24_7_news"
+CHANNEL_ID = "@football24_7_news" 
 GIGACHAT_AUTH_DATA = "MDFhMDhjODctNzJlOS03ZTM1LTkyZDUtMzQ2NWEzNzg4MzAxOmY3YmQyODM4LWJlOTItNGYzOC1hOGZjLTM1YTU2ZjE2YTgzMg=="
 
 RSS_URLS = [
@@ -60,6 +61,7 @@ def rewrite_news_with_ai(news_text: str) -> str:
         return None
 
 def extract_image_from_entry(entry):
+    """Извлекает ссылку на картинку из RSS-ленты"""
     if 'enclosures' in entry and len(entry.enclosures) > 0:
         for enc in entry.enclosures:
             if 'image' in enc.type or enc.href.endswith(('.jpg', '.jpeg', '.png')):
@@ -69,6 +71,7 @@ def extract_image_from_entry(entry):
     return None
 
 def get_latest_news_from_all_sources():
+    """Собирает последнюю новость из всех RSS-лент"""
     all_entries = []
     for url in RSS_URLS:
         try:
@@ -85,6 +88,7 @@ def get_latest_news_from_all_sources():
     return all_entries[0] 
 
 async def fetch_and_publish():
+    """Сбор новостей и публикация в канал"""
     print("Проверка новых новостей по всем источникам...")
     
     latest_entry = get_latest_news_from_all_sources()
@@ -114,31 +118,36 @@ async def fetch_and_publish():
                     posted_news.add(news_link)
                 except Exception as e:
                     print(f"Ошибка публикации в Telegram: {e}")
+            else:
+                print("Не удалось получить текст от GigaChat.")
+        else:
+            print("Самая свежая новость уже была опубликована ранее.")
+    else:
+        print("Не удалось получить новости из RSS-источников.")
 
 async def main():
-    # Удаляем вебхук, чтобы исправить ошибку TelegramConflictError
-    await bot.delete_webhook(drop_pending_updates=True)
+    print("ШАГ 1: Удаляем вебхук Telegram...")
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        print("ШАГ 1: Вебхук успешно удален.")
+    except Exception as e:
+        print(f"Ошибка при удалении вебхука: {e}")
     
+    print("ШАГ 2: Запускаем планировщик...")
     scheduler = AsyncIOScheduler()
     scheduler.add_job(fetch_and_publish, "interval", minutes=20) 
     scheduler.start()
+    print("ШАГ 2: Планировщик запущен.")
     
-    print("Бот запущен. Ожидание расписания...")
+    print("ШАГ 3: Делаем тестовую проверку новостей прямо сейчас...")
+    try:
+        await fetch_and_publish()
+        print("ШАГ 3: Тестовая проверка завершена.")
+    except Exception as e:
+        print(f"КРИТИЧЕСКАЯ ОШИБКА В ТЕСТЕ: {e}")
+    
+    print("ШАГ 4: Запускаем ожидание сообщений от Telegram (Polling)...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(fetch_and_publish, "interval", minutes=20) 
-    scheduler.start()
-    
-    print("Бот запущен. Ожидание расписания...")
-    
-    # Запускаем проверку прямо сейчас, не дожидаясь таймера:
-    await fetch_and_publish() 
-    
-    await dp.start_polling(bot)
