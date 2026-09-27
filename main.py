@@ -11,19 +11,20 @@ GIGACHAT_AUTH_DATA = "MDFhMDhjODctNzJlOS03ZTM1LTkyZDUtMzQ2NWEzNzg4MzAxOmY3YmQyOD
 
 # Список источников новостей
 RSS_URLS = [
-    "https://www.championat.com/xml/rss_football.xml",  # Чемпионат (Футбол)
-    "https://www.sports.ru/stat/export/rss/football.xml", # Sports.ru (Футбол)
-    "https://www.sport-express.ru/services/materials/news/football/se/", # Спорт-Экспресс
-    "https://matchtv.ru/news.rss" # Матч ТВ (общая, но бот сгенерирует текст только если это футбол)
+    "https://www.championat.com/xml/rss_football.xml",
+    "https://www.sports.ru/stat/export/rss/football.xml",
+    "https://www.sport-express.ru/services/materials/news/football/se/",
+    "https://matchtv.ru/news.rss"
 ]
 # =============================================
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Хранилище опубликованных новостей
+# Хранилище опубликованных ссылок, чтобы не было дублей
 posted_news = set()
 
+# Настройка системного промпта для нейросети
 SYSTEM_PROMPT = """
 Ты — главный редактор Telegram-канала "ФУТБОЛ 24/7". 
 Твоя задача — сделать короткую выжимку из новости. 
@@ -39,16 +40,23 @@ SYSTEM_PROMPT = """
 """
 
 def rewrite_news_with_ai(news_text: str) -> str:
-    """Отправка новости в GigaChat для рерайта"""
+    """Отправка новости в GigaChat для рерайта с автоопределением модели"""
     try:
         with GigaChat(credentials=GIGACHAT_AUTH_DATA, verify_ssl_certs=False) as giga:
+            # 1. Спрашиваем у API, какие модели доступны для вашего ключа
+            models = giga.get_models()
+            # 2. Берем самую первую доступную модель
+            available_model = models.data[0].id 
+            print(f"Успешно подключились к модели: {available_model}")
+            
+            # 3. Отправляем запрос именно в неё
             response = giga.chat(
                 payload={
                     "messages": [
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": f"Сделай пост из этой новости:\n{news_text}"}
                     ],
-                    "model": "GigaChat-Pro"  
+                    "model": available_model
                 }
             )
             return response.choices[0].message.content
@@ -73,7 +81,6 @@ def get_latest_news_from_all_sources():
         try:
             feed = feedparser.parse(url)
             if feed.entries:
-                # Берём самую новую запись из каждой ленты
                 entry = feed.entries[0] 
                 all_entries.append(entry)
         except Exception as e:
@@ -82,12 +89,10 @@ def get_latest_news_from_all_sources():
     if not all_entries:
         return None
         
-    # В RSS обычно есть поле 'published_parsed', по которому можно сортировать
-    # Но для надежности просто берём первую попавшуюся не опубликованную новость
-    # (в реальном проекте лучше парсить время и сортировать по нему)
     return all_entries[0] 
 
 async def fetch_and_publish():
+    """Сбор новостей и публикация в канал"""
     print("Проверка новых новостей по всем источникам...")
     
     latest_entry = get_latest_news_from_all_sources()
@@ -120,7 +125,6 @@ async def fetch_and_publish():
 
 async def main():
     scheduler = AsyncIOScheduler()
-    # Уменьшим интервал, чтобы новости с разных сайтов выходили чаще
     scheduler.add_job(fetch_and_publish, "interval", minutes=20) 
     scheduler.start()
     
