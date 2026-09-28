@@ -9,7 +9,7 @@ from gigachat.models import Chat, Messages, MessagesRole
 
 # ================= НАСТРОЙКИ =================
 BOT_TOKEN = "8691613866:AAF9OyxSbbECPSouLLJYeDKADYFqjQszN60"
-CHANNEL_ID = "@football24_7_news"  
+CHANNEL_ID = "@football24_7_news" 
 GIGACHAT_AUTH_DATA = "MDFhMDhjODctNzJlOS03ZTM1LTkyZDUtMzQ2NWEzNzg4MzAxOmY3YmQyODM4LWJlOTItNGYzOC1hOGZjLTM1YTU2ZjE2YTgzMg=="
 
 RSS_URLS = [
@@ -63,28 +63,39 @@ def rewrite_news_with_ai(news_text: str) -> str:
         return None
 
 def extract_image_from_entry(entry):
-    """Парсит страницу новости и забирает официальную обложку (og:image)"""
+    """Продвинутый парсер og:image с имитацией браузера и отладкой"""
     if not hasattr(entry, 'link') or not entry.link:
+        print("ОТЛАДКА: У записи в RSS нет ссылки (link)")
         return None
         
     try:
+        print(f"ОТЛАДКА: Скачиваем страницу статьи для поиска картинки -> {entry.link}")
         req = urllib.request.Request(
             entry.link, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            }
         )
         with urllib.request.urlopen(req, timeout=6) as response:
             html = response.read().decode('utf-8', errors='ignore')
             
-            # Ищем тег Open Graph с картинкой (есть у всех новостных сайтов)
-            match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
-            if match:
-                return match.group(1)
-                
-            match2 = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', html, re.IGNORECASE)
-            if match2:
-                return match2.group(1)
+            # Универсальный поиск (поддерживает property и name в любом порядке)
+            patterns = [
+                r'<meta[^>]+(?:property|name)=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']og:image["\']'
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, html, re.IGNORECASE)
+                if match:
+                    img_url = match.group(1)
+                    print(f"ОТЛАДКА: Найдена картинка og:image -> {img_url}")
+                    return img_url
+                    
+            print("ОТЛАДКА: Тег og:image на странице статьи не найден.")
     except Exception as e:
-        print(f"Не удалось загрузить картинку по ссылке {entry.link}: {e}")
+        print(f"ОТЛАДКА: Ошибка при загрузке страницы для картинки: {e}")
         
     return None
 
