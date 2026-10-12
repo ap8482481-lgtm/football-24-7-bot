@@ -105,6 +105,20 @@ def download_image(url: str):
         pass
     return None
 
+def download_generated_image(prompt: str):
+    """Резервная генерация реалистичного фона, если сайт заблокировал фото"""
+    import urllib.parse
+    try:
+        print("ОТЛАДКА: Сайт не отдал фото. Генерируем резервный ИИ-фон...")
+        safe_prompt = urllib.parse.quote(prompt)
+        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1280&height=720&nologo=true&model=flux"
+        req = requests.get(url, headers=HEADERS, timeout=30)
+        if req.status_code == 200:
+            return req.content
+    except Exception as e:
+        print(f"Ошибка резервной генерации: {e}")
+    return None
+
 def apply_premium_template(image_bytes: bytes, post_text: str) -> bytes:
     try:
         base_img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
@@ -192,7 +206,6 @@ def apply_premium_template(image_bytes: bytes, post_text: str) -> bytes:
         return image_bytes
 
 def get_latest_news_from_all_sources():
-    """Собирает последнюю новость из всех RSS-лент"""
     all_entries = []
     for url in RSS_URLS:
         try:
@@ -216,6 +229,7 @@ async def fetch_and_publish():
             final_post = rewrite_news_with_ai(raw_text)
             
             if final_post:
+                # 1. Пытаемся достать оригинальное фото
                 original_img_url = extract_original_image_url(latest_entry)
                 image_bytes = None
                 
@@ -223,15 +237,21 @@ async def fetch_and_publish():
                     print(f"ОТЛАДКА: Качаем фото -> {original_img_url}")
                     image_bytes = download_image(original_img_url)
                 
+                # 2. Если сайт заблокировал скачивание — генерируем ИИ-фон
+                if not image_bytes:
+                    fallback_prompt = "sports action photography, epic football moment, DSLR, ultra-realistic, sharp focus, stadium lights, photorealistic"
+                    image_bytes = download_generated_image(fallback_prompt)
+                
                 try:
                     if image_bytes:
+                        # 3. Накладываем шаблон
                         branded_image_bytes = apply_premium_template(image_bytes, final_post)
                         photo = BufferedInputFile(branded_image_bytes, filename="premium_cover.jpg")
                         await bot.send_photo(chat_id=CHANNEL_ID, photo=photo, caption=final_post)
                         print("Новость с ПРЕМИУМ ДИЗАЙНОМ опубликована!")
                     else:
                         await bot.send_message(chat_id=CHANNEL_ID, text=final_post)
-                        print("Новость без картинки опубликована!")
+                        print("Новость без картинки опубликована (даже резерв не сработал).")
                         
                     posted_news.add(news_link)
                 except Exception as e:
